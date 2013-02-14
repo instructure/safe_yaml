@@ -1,12 +1,4 @@
 require "yaml"
-require "safe_yaml/transform/to_boolean"
-require "safe_yaml/transform/to_date"
-require "safe_yaml/transform/to_float"
-require "safe_yaml/transform/to_integer"
-require "safe_yaml/transform/to_nil"
-require "safe_yaml/transform/to_symbol"
-require "safe_yaml/transform/to_time"
-require "safe_yaml/transform"
 require "safe_yaml/version"
 
 module SafeYAML
@@ -18,6 +10,8 @@ module SafeYAML
     :enable_arbitrary_object_deserialization => false,
     :suppress_warnings => false
   }
+
+  class UnsafeTagError < RuntimeError; end
 end
 
 module YAML
@@ -34,17 +28,28 @@ module YAML
     safe_mode ? safe_load_file(file) : unsafe_load_file(file)
   end
 
+  def self.read_for_safe_load(yaml)
+    # since we're going to do two passes, we need to read out the file here
+    # into a string
+    if yaml.respond_to?(:read)
+      yaml = yaml.read
+    end
+    yaml
+  end
+
   if SafeYAML::YAML_ENGINE == "psych"
-    require "safe_yaml/psych_handler"
+    require "safe_yaml/psych_tag_extractor"
     def self.safe_load(yaml, filename=nil)
-      safe_handler = SafeYAML::PsychHandler.new
-      parser = Psych::Parser.new(safe_handler)
+      yaml = read_for_safe_load(yaml)
+      extractor = SafeYAML::PsychTagExtractor.new
+      parser = Psych::Parser.new(extractor)
       if SafeYAML::MULTI_ARGUMENT_YAML_LOAD
         parser.parse(yaml, filename)
       else
         parser.parse(yaml)
       end
-      return safe_handler.result
+      verify_tags!(extractor.tags)
+      return unsafe_load(yaml)
     end
 
     def self.safe_load_file(filename)
@@ -61,12 +66,23 @@ module YAML
       end
     end
 
+    def self.default_whitelist
+      # psych doesn't tag the default types, except for binary
+      ::Set.new([
+        "!binary",
+        "tag:yaml.org,2002:binary",
+      ])
+    end
+
   else
-    require "safe_yaml/syck_resolver"
+    require "safe_yaml/syck_tag_extractor"
     def self.safe_load(yaml)
-      safe_resolver = SafeYAML::SyckResolver.new
+      yaml = read_for_safe_load(yaml)
       tree = YAML.parse(yaml)
-      return safe_resolver.resolve_node(tree)
+      extractor = SafeYAML::SyckTagExtractor.new
+      extractor.extract(tree)
+      verify_tags!(extractor.tags)
+      return unsafe_load(yaml)
     end
 
     def self.safe_load_file(filename)
@@ -76,6 +92,21 @@ module YAML
     def self.unsafe_load_file(filename)
       # https://github.com/indeyets/syck/blob/master/ext/ruby/lib/yaml.rb#L133-135
       File.open(filename) { |f| self.unsafe_load f }
+    end
+
+    def self.default_whitelist
+      ::Set.new([
+        "tag:yaml.org,2002:str",
+        "tag:yaml.org,2002:int",
+        "tag:yaml.org,2002:float",
+        "tag:yaml.org,2002:binary",
+        "tag:yaml.org,2002:merge",
+        "tag:yaml.org,2002:null",
+        %r{^tag:yaml.org,2002:bool#},
+        %r{^tag:yaml.org,2002:float#},
+        %r{^tag:yaml.org,2002:timestamp#},
+        "tag:ruby.yaml.org,2002:object:YAML::Syck::BadAlias",
+      ])
     end
   end
 
@@ -106,6 +137,29 @@ module YAML
 
     def disable_arbitrary_object_deserialization!
       SafeYAML::OPTIONS[:enable_arbitrary_object_deserialization] = false
+    end
+
+    def set_whitelist(new_whitelist)
+      @whitelist = default_whitelist + new_whitelist
+    end
+
+    def whitelist
+      @whitelist ||= default_whitelist
+    end
+
+    def verify_tags!(tags)
+      tags.each do |tag|
+        if whitelist.none? { |ok| ok === tag }
+          raise SafeYAML::UnsafeTagError.new("YAML tag is not whitelisted: #{tag}")
+        end
+      end
+    end
+
+    SYMBOL_REGEX = /\A:\w+\Z/.freeze
+    def check_string_for_symbol!(string)
+      if !YAML.enable_symbol_parsing? && string.match(SYMBOL_REGEX)
+        raise SafeYAML::UnsafeTagError.new("Symbol parsing is disabled")
+      end
     end
 
     private
