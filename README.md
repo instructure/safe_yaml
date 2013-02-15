@@ -10,7 +10,7 @@ Installation
 
 Add this line to your application's Gemfile:
 
-    gem "safe_yaml"
+    gem "safe_yaml-instructure"
 
 And then execute:
 
@@ -18,7 +18,7 @@ And then execute:
 
 Or install it yourself as:
 
-    $ gem install safe_yaml
+    $ gem install safe_yaml-instructure
 
 Purpose
 -------
@@ -62,7 +62,7 @@ With SafeYAML, that attacker would be thwarted:
     > require "safe_yaml"
     => true
     > YAML.load(yaml)
-    => {"foo; end; puts %(I'm in yr system!); def bar"=>"baz"}
+    SafeYAML::UnsafeTagError: YAML tag is not whitelisted: tag:ruby.yaml.org,2002:object:ExploitableClassBuilder
 
 Usage
 -----
