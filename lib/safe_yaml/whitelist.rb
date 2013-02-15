@@ -1,5 +1,7 @@
 module SafeYAML
   class Whitelist
+    attr_reader :allowed
+
     def initialize
       reset!
     end
@@ -7,18 +9,36 @@ module SafeYAML
     def check(tag, value)
       @allowed.each do |ok, checker|
         if ok === tag
-          if checker == true
-            return :cacheable
-          elsif checker.call(value)
-            return :allowed
-          end
+          check = check_value(ok, checker, value)
+          return check if check
         end
       end
       nil
     end
 
+    def check_value(tag, checker, value)
+      if checker == true
+        return :cacheable
+      end
+
+      if @cached[tag][value]
+        return :cacheable
+      end
+
+      result = checker.call(value)
+      if result == :cacheable
+        @cached[tag][value] = true
+        return :cacheable
+      elsif result
+        return :allowed
+      else
+        return nil
+      end
+    end
+
     def reset!
       @allowed = {}
+      @cached = {}
       if SafeYAML::YAML_ENGINE == "psych"
         # psych doesn't tag the default types, except for binary
         add("!binary",
@@ -39,12 +59,16 @@ module SafeYAML
 
     def add(*tags, &block)
       tags.each do |tag|
+        @cached[tag] = {} if block
         @allowed[tag] = block || true
       end
     end
 
     def remove(*tags)
-      tags.each { |tag| @allowed.delete(tag) }
+      tags.each do |tag|
+        @cached.delete(tag)
+        @allowed.delete(tag)
+      end
     end
   end
 end
