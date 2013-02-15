@@ -1,7 +1,7 @@
 SafeYAML
 ========
 
-[![Build Status](https://travis-ci.org/dtao/safe_yaml.png)](http://travis-ci.org/dtao/safe_yaml)
+[![Build Status](https://travis-ci.org/instructure/safe_yaml.png)](http://travis-ci.org/instructure/safe_yaml)
 
 The **SafeYAML** gem provides an alternative implementation of `YAML.load` suitable for accepting user input in Ruby applications. Unlike Ruby's built-in implementation of `YAML.load`, SafeYAML's version will not expose apps to arbitrary code execution exploits (such as [the one recently discovered in Rails](http://www.reddit.com/r/netsec/comments/167c11/serious_vulnerability_in_ruby_on_rails_allowing/) (or [this one](http://www.h-online.com/open/news/item/Rails-developers-close-another-extremely-critical-flaw-1793511.html))).
 
