@@ -296,18 +296,20 @@ describe YAML do
 
       before :each do
         if SafeYAML::YAML_ENGINE == "psych"
-          YAML.set_whitelist(['!ruby/object:Set',
-                              '!map:Hashie::Mash',
-                              '!ruby/object:MyClass',])
+          YAML.whitelist.add('!ruby/object:Set',
+                             '!map:Hashie::Mash',
+                             '!ruby/object:MyClass')
+          YAML.whitelist.add('!ruby/class') { |val| val == 'A' }
         else
-          YAML.set_whitelist(['tag:ruby.yaml.org,2002:object:Set',
-                              'tag:yaml.org,2002:map:Hashie::Mash',
-                              'tag:ruby.yaml.org,2002:object:MyClass',])
+          YAML.whitelist.add('tag:ruby.yaml.org,2002:object:Set',
+                             'tag:yaml.org,2002:map:Hashie::Mash',
+                             'tag:ruby.yaml.org,2002:object:MyClass')
+          YAML.whitelist.add('tag:ruby.yaml.org,2002:class') { |val| val == 'A' }
         end
       end
 
       after :each do
-        YAML.set_whitelist([])
+        YAML.whitelist.reset!
       end
 
       it "will allow array-structure classes via the whitelist" do
@@ -349,6 +351,29 @@ describe YAML do
         result.b.a.a.should == 2
         result.b.a.b.object_id.should == result.b.a.object_id
         result.b.a.object_id.should == result.b.b.object_id
+      end
+
+      class A; end
+      class B; end
+
+      it "allows a block in the whitelist to determine safety" do
+        res = YAML.safe_load <<-YAML.unindent
+        ---
+        a: !ruby/class A
+        YAML
+        if SafeYAML::YAML_ENGINE == "psych"
+          res['a'].should == A
+        else
+          res['a'].should be_a(Syck::DomainType)
+        end
+
+        yaml = <<-YAML.unindent
+        ---
+        a: !ruby/class A
+        b: !ruby/class B
+        YAML
+
+        expect { YAML.safe_load yaml }.to raise_error(SafeYAML::UnsafeTagError)
       end
     end
   end

@@ -1,25 +1,26 @@
 module SafeYAML
-  class SyckTagExtractor
+  class SyckTagVerifier
     QUOTE_STYLES = [:quote1, :quote2]
 
     attr_reader :tags
 
-    def initialize
+    def initialize(whitelist)
       @tags = Set.new
+      @verifier = SafeYAML::TagVerifier.new(whitelist)
     end
 
-    def extract(node)
+    def verify(node)
       return unless node.respond_to?(:type_id)
       if !QUOTE_STYLES.include?(node.instance_variable_get(:@style)) && node.value.is_a?(String)
         YAML.check_string_for_symbol!(node.value)
       end
-      @tags << node.type_id if node.type_id
+      @verifier.verify_tag!(node.type_id, node.value)
 
       case node.value
       when Hash
-        node.value.each { |k,v| extract(k); extract(v) }
+        node.value.each { |k,v| verify(k); verify(v) }
       when Array
-        node.value.each { |i| extract(i) }
+        node.value.each { |i| verify(i) }
       end
     end
   end
